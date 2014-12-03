@@ -106,15 +106,15 @@ addLocationsBind :: (Tickish Var -> SrcSpan)
                  -> (SrcSpan -> CoreExpr -> CoreM CoreExpr) 
                  -> CoreBind -> CoreM CoreBind
 addLocationsBind getSpan isInteresting annotate bndr = case bndr of
-  NonRec b expr -> NonRec b `liftM` addLocationsExpr getSpan annotate isInteresting expr
-  Rec binds     -> Rec `liftM` forM binds (secondM $ addLocationsExpr getSpan annotate isInteresting)
+  NonRec b expr -> NonRec b `liftM` addLocationsExpr getSpan isInteresting annotate expr
+  Rec binds     -> Rec `liftM` forM binds (secondM $ addLocationsExpr getSpan isInteresting annotate)
 
 
 addLocationsExpr :: (Tickish Var -> SrcSpan)
-                 -> (SrcSpan -> CoreExpr -> CoreM CoreExpr)
                  -> (CoreExpr -> CoreM Bool)
+                 -> (SrcSpan -> CoreExpr -> CoreM CoreExpr)
                  -> CoreExpr -> CoreM CoreExpr
-addLocationsExpr getSpan annotate isInteresting = go noSrcSpan
+addLocationsExpr getSpan isInteresting annotate = go noSrcSpan
   where
   go ss (Tick t expr) 
     | isGoodSrcSpan (getSpan t)
