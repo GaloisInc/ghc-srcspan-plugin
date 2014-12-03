@@ -1,5 +1,7 @@
 # (Ab)using Compiler Plugins to Improve Embedded DSLs
 
+Embedded DSLs are a bit of a double-edged sword. They have a low start-up cost because you can defer a lot of work to the host language, but producing good error messages can be challenging. People often talk about the quality of *type errors* produced by the host language, but I'm going to focus instead on producing better *runtime errors*.
+
 ## A Simple Toy Language
 
 Here's a fragment of a simple imperative language.
@@ -21,7 +23,7 @@ data Stmt = Assign String Expr
           deriving (Show)
 ```
 
-With judicious use of smart constructors and a custom Monad, we can turn
+With judicious use of smart constructors, we can build a nice embedded DSL for our language, turning
 
 ```haskell
 sum10 :: Imp ()
@@ -49,7 +51,7 @@ into
 ]
 ```
 
-I think we can all agree that the monadic DSL is a big improvement in usability. But when we actually run the program, we get
+But when we actually run the program, we get
 
 ```haskell
 λ> eval $ runImp sum10
@@ -60,9 +62,9 @@ which is not so great. I like my error messages to include a source location so 
 
 As an alternative, we could use a pre-processor to transform the original Haskell code by adding explicit references to the source locations. But that's a bit unsatisfactory because now the code we write is no longer the same code GHC sees, which means that errors thrown by GHC will refer to incorrect locations. Luckily for us, GHC includes support for *compiler plugins* so users can implement their own optimization passes. So, today we're going to implement an optimization pass that optimizes usability rather than performance.
 
-## blergh
+## Strategy
 
-GHC allows users to write optimization passes over [Core], the first of a few intermediate representations used by GHC. Core is a simple language with just a handful of data constructors, essentially[^actually]
+GHC allows users to write optimization passes over [Core], the first of a few intermediate representations used by GHC. Core is a simple language with just a handful of data constructors, essentially [^actually]
 
 ```haskell
 data CoreExpr
@@ -81,7 +83,7 @@ data CoreExpr
 
 This makes our life a whole lot easier since we don't have to consider the entire surface area of Haskell's syntax when we write our plugin.
 
-So the high-level strategy is to write a Core transformation that will insert calls to a `setLocation` action in our monadic DSL, transforming the original Haskell code into something like
+Our goal is to write a Core transformation that will insert calls to a `setLocation` action in our monadic DSL, transforming the original Haskell code into something like
 
 ```haskell
 sum10 :: Imp ()
@@ -100,6 +102,8 @@ sum10 = do
   assert (r =? 54)
 ```
 
+This isn't perfect as our language will only know about source locations with statement-level granularity, but the upside is that the changes to the language are minimal. We can just add another `Stmt` constructor that tells the interpreter to update the current location.
+
 To write this transformation we need to know three things:
 
 1. Where to insert the annotations?
@@ -110,7 +114,7 @@ To write this transformation we need to know three things:
 
 GHC is written as a library with a vast API, so let's first pick out and describe a few functions that we'll need to use. I'm going to take some artistic license with the types of these API functions in order to hide some of the necessary plumbing. A complete and running version of the plugin can be found [here].
 
-[here]: https://github.com/GaloisInc/ghc-srcspan-plugin/tree/master/examples/
+[here]: https://github.com/GaloisInc/ghc-srcspan-plugin/blob/master/examples/ImpPluginExplicit.hs
 
 ### Deconstructing Expressions and Types
 
@@ -157,7 +161,7 @@ setLocation  :: ImpSrcSpan -> Imp ()
 
 ```haskell
 data Stmt = ...
-          | CurrentLoc ImpSrcSpan
+          | SetLocation ImpSrcSpan
 ```
 
 I'm also using a new `ImpSrcSpan` type rather than GHC's `SrcSpan` to emphasize that we can't just embed the `SrcSpan` value directly, we have to reconstruct it at run-time.
@@ -261,9 +265,9 @@ addLocationsExpr = go noSrcSpan
   where
   go ss (Tick t expr) 
     | isGoodSrcSpan (tickSpan t)
-    = go (tickSpan t) expr
+    = Tick t (go (tickSpan t) expr)
     | otherwise
-    = go ss expr
+    = Tick t (go ss expr)
   go ss e@(App expr arg) 
     | isInteresting e
     = annotate ss (App (go ss expr) (go ss arg))
@@ -292,6 +296,7 @@ We can hook our pass into GHC as a plugin with the following wrapper
 
 ```haskell
 module ImpPlugin where
+
 import GhcPlugins
 import Imp
 
@@ -309,7 +314,26 @@ install opts todos = do
 and enable it at compile-time with `-fplugin=ImpPlugin`. Here are the results of all our hard work
 
 ```haskell
-...
+λ> runImp sum10
+[ SetLocation "ImpDemo.hs:(9,9)-(17,19)"
+, SetLocation "ImpDemo.hs:(12,3)-(12,9)"
+, Assign "local0" (Lit (Integer 0))
+, SetLocation "ImpDemo.hs:(9,9)-(17,19)"
+, SetLocation "ImpDemo.hs:(13,3)-(13,9)"
+, Assign "local1" (Lit (Integer 0))
+, SetLocation "ImpDemo.hs:(9,9)-(17,19)"
+, SetLocation "ImpDemo.hs:(14,3)-(16,15)"
+, While
+    (Lt (Var "local0") (Lit (Integer 11)))
+    [ SetLocation "ImpDemo.hs:(14,3)-(16,15)"
+    , SetLocation "ImpDemo.hs:(15,5)-(15,15)"
+    , Assign "local1" (Add (Var "local1") (Var "local0"))
+    , SetLocation "ImpDemo.hs:(16,5)-(16,15)"
+    , Assign "local0" (Add (Var "local0") (Lit (Integer 1)))
+    ]
+, SetLocation "ImpDemo.hs:(17,3)-(17,19)"
+, Assert (Eq (Var "local1") (Lit (Integer 54)))
+]
 ```
 
 Wonderful!

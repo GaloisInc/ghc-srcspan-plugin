@@ -38,13 +38,13 @@ data Stmt = Assign Var Expr
           | IfTE Expr Block Block
           | While Expr Block
           | Assert Expr
-          | SetLocation SrcSpan
+          | SetLocation ImpSrcSpan
           deriving (Show)
 
-data SrcSpan = SrcSpan FilePath Int Int Int Int
+data ImpSrcSpan = ImpSrcSpan FilePath Int Int Int Int
 
-instance Show SrcSpan where
-  show (SrcSpan f l1 c1 l2 c2)
+instance Show ImpSrcSpan where
+  show (ImpSrcSpan f l1 c1 l2 c2)
     = printf "\"%s:(%d,%d)-(%d,%d)\"" f l1 c1 l2 c2
 
 true, false :: Expr
@@ -85,11 +85,11 @@ while b s = tell [While b (runImp s)]
 assert :: Expr -> Imp ()
 assert b = tell [Assert b]
 
-makeLocation :: FilePath -> Int -> Int -> Int -> Int -> SrcSpan
-makeLocation = SrcSpan
+makeLocation :: FilePath -> Int -> Int -> Int -> Int -> ImpSrcSpan
+makeLocation = ImpSrcSpan
 
-setLocation :: SrcSpan -> Imp ()
+setLocation :: ImpSrcSpan -> Imp ()
 setLocation loc = tell [SetLocation loc]
 
-withLocation :: SrcSpan -> Imp a -> Imp a
+withLocation :: ImpSrcSpan -> Imp a -> Imp a
 withLocation loc doThis = setLocation loc >> doThis
