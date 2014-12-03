@@ -8,6 +8,7 @@ Here's a fragment of a simple imperative language.
 
 ```haskell
 data Lit = Integer Integer
+         | Bool Bool
          deriving (Show)
 
 data Expr = Var String
@@ -55,7 +56,7 @@ But when we actually run the program, we get
 
 ```haskell
 λ> eval $ runImp sum10
-error: assertion failed: Eq (Var "local1") (Lit (Integer 54))
+*** Exception: assertion failed: Eq (Var "local1") (Lit (Integer 54))
 ```
 
 which is not so great. I like my error messages to include a source location so I know where to start looking. Unfortunately there's no way for a Haskell function to know where it was called, and for good reason as that would destroy purity.
@@ -168,8 +169,7 @@ I'm also using a new `ImpSrcSpan` type rather than GHC's `SrcSpan` to emphasize 
 
 ## Finding interesting expressions
 
-Since our goal is locations with statement-level granularity, we'll consider any expression with type `Imp a` interesting. Encoding this as a predicate on Core expressions is straightforward, we just use `splitTyConApp_maybe` and check if the
-type constructor is `Imp`.
+Since our goal is locations with statement-level granularity, we'll consider any expression with type `Imp a` interesting. Encoding this as a predicate on Core expressions is straightforward, we'll just use `splitTyConApp_maybe` and check if the type constructor is `Imp`.
 
 ```haskell
 isInteresting :: CoreExpr -> Bool
@@ -334,6 +334,9 @@ and enable it at compile-time with `-fplugin=ImpPlugin`. Here are the results of
 , SetLocation "ImpDemo.hs:(17,3)-(17,19)"
 , Assert (Eq (Var "local1") (Lit (Integer 54)))
 ]
+
+λ> eval $ runImp sum10
+*** Exception: "ImpDemo.hs:(17,3)-(17,19)": assertion failed: Eq (Var "local1") (Lit (Integer 54))
 ```
 
 Wonderful!
