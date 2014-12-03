@@ -118,9 +118,9 @@ addLocationsExpr getSpan isInteresting annotate = go noSrcSpan
   where
   go ss (Tick t expr) 
     | isGoodSrcSpan (getSpan t)
-    = go (getSpan t) expr
+    = liftM (Tick t) (go (getSpan t) expr)
     | otherwise
-    = go ss expr
+    = liftM (Tick t) (go ss expr)
   go ss e@(App expr arg) 
     = do b <- isInteresting e
          let rest = liftM2 App (go ss expr) (go ss arg)
