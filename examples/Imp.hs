@@ -1,3 +1,4 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Imp where
 
@@ -5,13 +6,13 @@ import Prelude hiding (and, or, not)
 
 import           Control.Monad.Writer
 import           Data.String
-import           GHC.Plugins.SrcSpan
-import qualified GhcPlugins           as GHC
+import           Text.Printf
 
-type Imp a = Writer Block a
+newtype Imp a = Imp (Writer Block a)
+  deriving (Monad, MonadWriter Block)
 
 runImp :: Imp a -> Block
-runImp = execWriter
+runImp (Imp a) = execWriter a
 
 type Var = String
 
@@ -37,8 +38,14 @@ data Stmt = Assign Var Expr
           | IfTE Expr Block Block
           | While Expr Block
           | Assert Expr
-          | SrcSpan GHC.RealSrcSpan
+          | SetLocation SrcSpan
           deriving (Show)
+
+data SrcSpan = SrcSpan FilePath Int Int Int Int
+
+instance Show SrcSpan where
+  show (SrcSpan f l1 c1 l2 c2)
+    = printf "\"%s:(%d,%d)-(%d,%d)\"" f l1 c1 l2 c2
 
 true, false :: Expr
 true  = Lit (Bool True)
@@ -78,16 +85,11 @@ while b s = tell [While b (runImp s)]
 assert :: Expr -> Imp ()
 assert b = tell [Assert b]
 
+makeLocation :: FilePath -> Int -> Int -> Int -> Int -> SrcSpan
+makeLocation = SrcSpan
 
------------------------------------------------------------------------
+setLocation :: SrcSpan -> Imp ()
+setLocation loc = tell [SetLocation loc]
 
-sum10 :: Imp ()
-sum10 = do
-  let n = "n"
-  let r = "r"
-  n =: 0
-  r =: 0
-  while (n <? 11) $ do
-    r =: r + n
-    n =: n + 1
-  assert (r =? 55)
+withLocation :: SrcSpan -> Imp a -> Imp a
+withLocation loc doThis = setLocation loc >> doThis

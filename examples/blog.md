@@ -316,4 +316,4 @@ Wonderful!
 
 You may have noticed that the only pieces of the plugin that were actually specific to `Imp` were finding interesting expressions and annotating them with source locations. So I've extracted the rest into a generic [pass] that you can re-use.
 
-[pass]: http://hackage.haskell.org/package/ghc-srcspan-plugin-0.1.0.0/docs/GHC-Plugins-SrcSpan.html
+[pass]: http://hackage.haskell.org/package/ghc-srcspan-plugin
