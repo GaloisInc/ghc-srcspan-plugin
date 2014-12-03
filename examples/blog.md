@@ -113,7 +113,7 @@ To write this transformation we need to know three things:
 
 ## Useful API Functions
 
-GHC is written as a library with a vast API, so let's first pick out and describe a few functions that we'll need to use. I'm going to take some artistic license with the types of these API functions in order to hide some of the necessary plumbing. A complete and running version of the plugin can be found [here].
+GHC is written as a library with a vast API, so let's first pick out and describe a few functions that we'll need to use. I'm going to take some artistic license with the types of these API functions in order to hide some of the necessary plumbing. I will also use angle brackets (e.g. `<Imp>`) to refer to specific `Type` and `CoreExpr` values. A complete and running version of the plugin can be found [here].
 
 [here]: https://github.com/GaloisInc/ghc-srcspan-plugin/blob/master/examples/ImpPluginExplicit.hs
 
@@ -339,8 +339,12 @@ and enable it at compile-time with `-fplugin=ImpPlugin`. Here are the results of
 *** Exception: "ImpDemo.hs:(17,3)-(17,19)": assertion failed: Eq (Var "local1") (Lit (Integer 54))
 ```
 
-Wonderful!
+Wonderful! 
 
 You may have noticed that the only pieces of the plugin that were actually specific to `Imp` were finding interesting expressions and annotating them with source locations. So I've extracted the rest into a generic [pass] that you can re-use.
 
+As a final note, I don't claim to have invented anything conceptually new here, both [Scala] and [Idris] support reifying source locations in a much more principled manner than what I've presented. It would also be nice if GHC had similar support, perhaps via the `ImplicitParams` extension. But I do believe this is a nice solution that you can use today!
+
+[Scala]: http://lampwww.epfl.ch/~amin/pub/hosc2013.pdf
+[Idris]: http://www.davidchristiansen.dk/2014/12/03/filling-out-source-locations-in-idris/
 [pass]: http://hackage.haskell.org/package/ghc-srcspan-plugin
