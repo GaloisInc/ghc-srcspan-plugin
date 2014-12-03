@@ -47,9 +47,9 @@ isImpStmt impTyCon expr
 mkWithLocExpr :: Var -> Var -> SrcSpan -> CoreExpr -> CoreM CoreExpr
 mkWithLocExpr mkLocVar withLocVar (RealSrcSpan ss) expr = do
   loc <- mkLocExpr mkLocVar ss
-  return $ mkCoreApps (Var withLocVar) [ Type exprResTy, loc, expr ]
+  return $ mkCoreApps (Var withLocVar) $ map Type tys ++ [ loc, expr ]
   where
-  (_, [exprResTy]) = splitAppTys $ exprType expr
+  (_, tys) = splitAppTys $ exprType expr
 
 mkWithLocExpr _ _ _ expr = return expr
 

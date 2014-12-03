@@ -238,9 +238,9 @@ Core is explicitly typed, so when we generate the call to `withLocation` inside 
 ```haskell
 annotate :: SrcSpan -> CoreExpr -> CoreExpr
 annotate src expr =
-  mkCoreApps (Var <withLocation>) [Type resTy, mkLocExpr src, expr]
+  mkCoreApps (Var <withLocation>) $ map Type tys ++ [mkLocExpr src, expr]
   where
-  Just (_, [resTy]) = splitTyConApp_maybe $ exprType expr
+  Just (_, tys) = splitTyConApp_maybe $ exprType expr
 ```
 
 ## Getting the locations
@@ -341,10 +341,11 @@ and enable it at compile-time with `-fplugin=ImpPlugin`. Here are the results of
 
 Wonderful! 
 
-You may have noticed that the only pieces of the plugin that were actually specific to `Imp` were finding interesting expressions and annotating them with source locations. So I've extracted the rest into a generic [pass] that you can re-use.
+You may have noticed that the only pieces of the plugin that were actually specific to `Imp` were finding interesting expressions and annotating them with source locations. So I've extracted the rest into a generic [pass] that you can re-use. In fact we're already using this plugin in the [Ivory] language for writing safe embedded systems.
 
 As a final note, I don't claim to have invented anything conceptually new here, both [Scala] and [Idris] support reifying source locations in a much more principled manner than what I've presented. It would also be nice if GHC had similar support, perhaps via the `ImplicitParams` extension. But I do believe this is a nice solution that you can use today!
 
 [Scala]: http://lampwww.epfl.ch/~amin/pub/hosc2013.pdf
 [Idris]: http://www.davidchristiansen.dk/2014/12/03/filling-out-source-locations-in-idris/
 [pass]: http://hackage.haskell.org/package/ghc-srcspan-plugin
+[Ivory]: https://github.com/GaloisInc/ivory/blob/master/ivory/src/Ivory/Language/Plugin.hs
