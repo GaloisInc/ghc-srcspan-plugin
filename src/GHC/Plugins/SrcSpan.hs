@@ -4,9 +4,8 @@
 
 -- | This module provides a generic Core-to-Core pass for annotating Haskell
 -- expressions with the original source locations. You can use it to build a GHC
--- Plugin tailored to your own library by providing a predicate to select
--- interesting expressions for annotation and a function to annotate the
--- expressions.
+-- Plugin tailored to your own library by providing a predicate a function to
+-- annotate interesting expressions.
 --
 -- Example usage:
 --
@@ -23,8 +22,7 @@
 -- >   reinitializeGlobals
 -- >   return $ mypass : todos
 -- >   where
--- >   mypass = CoreDoPluginPass "Add Locations" $ mkPass isInteresting annotate False
--- >   isInteresting expr = ...
+-- >   mypass = CoreDoPluginPass "Add Locations" $ mkPass annotate False
 -- >   annotate expr = ...
 --
 -- You will need to coax GHC into adding the source information to the Core via
@@ -53,21 +51,19 @@ import           Trace.Hpc.Mix
 import           Trace.Hpc.Util
 
 
--- | Given a way of identifying "interesting" 'CoreExpr's and annotating them
--- with 'SrcSpan's, construct a Core-to-Core pass that traverses all of the
--- 'CoreBind's and annotates the interesting ones.
-mkPass :: (CoreExpr -> CoreM Bool)
-          -- ^ Should we annotate this 'CoreExpr'?
-       -> (SrcSpan -> CoreExpr -> CoreM CoreExpr)
-          -- ^ Annotate the 'CoreExpr' with the 'SrcSpan'.
+-- | Given a way of annotating "interesting" 'CoreExpr's with 'SrcSpan's,
+-- construct a Core-to-Core pass that traverses all of the 'CoreBind's and
+-- annotates the interesting ones.
+mkPass :: (SrcSpan -> CoreExpr -> CoreM CoreExpr)
+          -- ^ Annotate the 'CoreExpr' with the 'SrcSpan' if it's interesting.
        -> Bool
           -- ^ Should we remove the @hpc@ hooks from the resulting binary?
        -> ModGuts -> CoreM ModGuts
-mkPass isInteresting annotate killForeignStubs guts@(ModGuts {..}) = do
+mkPass annotate killForeignStubs guts@(ModGuts {..}) = do
   df    <- getDynFlags
   mkLoc <- liftIO $ getSpans df guts
 
-  binds <- mapM (addLocationsBind mkLoc isInteresting annotate) mg_binds
+  binds <- mapM (addLocationsBind mkLoc annotate) mg_binds
 
   let stubs = if killForeignStubs
                  then NoStubs
@@ -102,40 +98,37 @@ tickSpan _   bk (Breakpoint i _)  = IntMap.findWithDefault noSrcSpan i bk
 
 
 addLocationsBind :: (Tickish Var -> SrcSpan)
-                 -> (CoreExpr -> CoreM Bool) 
                  -> (SrcSpan -> CoreExpr -> CoreM CoreExpr) 
                  -> CoreBind -> CoreM CoreBind
-addLocationsBind getSpan isInteresting annotate bndr = case bndr of
-  NonRec b expr -> NonRec b `liftM` addLocationsExpr getSpan isInteresting annotate expr
-  Rec binds     -> Rec `liftM` forM binds (secondM $ addLocationsExpr getSpan isInteresting annotate)
+addLocationsBind getSpan annotate bndr = case bndr of
+  NonRec b expr -> NonRec b `liftM` addLocationsExpr getSpan annotate expr
+  Rec binds     -> Rec `liftM` forM binds (secondM $ addLocationsExpr getSpan annotate)
 
 
 addLocationsExpr :: (Tickish Var -> SrcSpan)
-                 -> (CoreExpr -> CoreM Bool)
                  -> (SrcSpan -> CoreExpr -> CoreM CoreExpr)
                  -> CoreExpr -> CoreM CoreExpr
-addLocationsExpr getSpan isInteresting annotate = go noSrcSpan
+addLocationsExpr getSpan annotate = go noSrcSpan
   where
   go ss (Tick t expr) 
     | isGoodSrcSpan (getSpan t)
     = liftM (Tick t) (go (getSpan t) expr)
     | otherwise
     = liftM (Tick t) (go ss expr)
-  go ss e@(App expr arg) 
-    = do b <- isInteresting e
-         let rest = liftM2 App (go ss expr) (go ss arg)
-         if b
-           then annotate ss =<< rest
-           else rest
-  go ss (Lam x expr)
+  go ss e
+    = annotate ss =<< to ss e
+
+  to ss (App f e)
+    = liftM2 App (go ss f) (go ss e)
+  to ss (Lam x expr)
     = liftM (Lam x) (go ss expr)
-  go ss (Let bndr expr)
-    = liftM2 Let (addLocationsBind getSpan isInteresting annotate bndr) (go ss expr)
-  go ss (Case expr x t alts)
+  to ss (Let bndr expr)
+    = liftM2 Let (addLocationsBind getSpan annotate bndr) (go ss expr)
+  to ss (Case expr x t alts)
     = liftM2 (\e as -> Case e x t as) (go ss expr) (mapM (addLocationsAlt ss) alts)
-  go ss (Cast expr c)
+  to ss (Cast expr c)
     = liftM (`Cast` c) (go ss expr)
-  go _  expr
+  to _  expr
     = return expr
 
   addLocationsAlt ss (c, xs, expr)

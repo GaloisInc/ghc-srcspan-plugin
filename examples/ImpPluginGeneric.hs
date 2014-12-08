@@ -27,9 +27,8 @@ install opts todos = do
   Just impName <- liftIO $ lookupRdrNameInModuleForPlugins hsc_env iMP_mod iMP
   impCon <- lookupTyCon impName
 
-  let isInteresting expr = return (isImpStmt impCon expr)
-  let annotate loc expr = mkWithLocExpr mkLocVar withLocVar loc expr
-  let locpass = mkPass isInteresting annotate killForeignStubs
+  let annotate loc expr = mkWithLocExpr impCon mkLocVar withLocVar loc expr
+  let locpass = mkPass annotate killForeignStubs
 
   return $ (CoreDoPluginPass "Add Locations" locpass) : todos
   where
@@ -37,21 +36,23 @@ install opts todos = do
 
 
 isImpStmt :: TyCon -> CoreExpr -> Bool
-isImpStmt impTyCon expr
+isImpStmt impTyCon expr@(App _ _)
   | Just (tc, _) <- splitTyConApp_maybe $ exprType expr
   = tc == impTyCon
-  | otherwise
+isImpStmt impTyCon expr@(Var _)
+  | Just (tc, _) <- splitTyConApp_maybe $ exprType expr
+  = tc == impTyCon
+isImpStmt _ _
   = False
 
-
-mkWithLocExpr :: Var -> Var -> SrcSpan -> CoreExpr -> CoreM CoreExpr
-mkWithLocExpr mkLocVar withLocVar (RealSrcSpan ss) expr = do
-  loc <- mkLocExpr mkLocVar ss
-  return $ mkCoreApps (Var withLocVar) $ map Type tys ++ [ loc, expr ]
-  where
-  (_, tys) = splitAppTys $ exprType expr
-
-mkWithLocExpr _ _ _ expr = return expr
+mkWithLocExpr :: TyCon -> Var -> Var -> SrcSpan -> CoreExpr -> CoreM CoreExpr
+mkWithLocExpr impTyCon mkLocVar withLocVar (RealSrcSpan ss) expr
+  | isImpStmt impTyCon expr = do
+      loc <- mkLocExpr mkLocVar ss
+      return $ mkCoreApps (Var withLocVar) $ map Type tys ++ [ loc, expr ]
+      where
+      (_, tys) = splitAppTys $ exprType expr
+mkWithLocExpr _ _ _ _ expr = return expr
 
 
 mkLocExpr :: Var -> RealSrcSpan -> CoreM CoreExpr

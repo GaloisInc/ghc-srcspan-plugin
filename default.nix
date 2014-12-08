@@ -4,7 +4,7 @@
 
 cabal.mkDerivation (self: {
   pname = "ghc-srcspan-plugin";
-  version = "0.1.0.0";
+  version = "0.2.0.0";
   src = ./.;
   meta = {
     description = "Generic GHC Plugin for annotating Haskell code with source location data";
