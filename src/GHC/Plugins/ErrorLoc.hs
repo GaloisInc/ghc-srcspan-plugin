@@ -1,4 +1,4 @@
-module GHC.Plugins.ErrorLoc where
+module GHC.Plugins.ErrorLoc (plugin, errorAt, undefinedAt) where
 
 import DynamicLoading
 import GhcPlugins
@@ -28,17 +28,18 @@ install opts todos = do
   return $ mypass : todos
 
 
-isErrorVar :: Var -> Bool
-isErrorVar v = v == eRROR_ID || v == uNDEFINED_ID
+isErrorVar :: Var -> Var -> Var -> Maybe Var
+isErrorVar errAt _ v
+  | v == eRROR_ID = Just errAt
+isErrorVar _ undefAt v
+  | v == uNDEFINED_ID = Just undefAt
+isErrorVar _ _ _ = Nothing
 
 mkErrorAt :: Var -> Var -> SrcSpan -> CoreExpr -> CoreM CoreExpr
 mkErrorAt errAt undefAt loc (App (Var v) (Type t))
-  | isErrorVar v = do
+  | Just v' <- isErrorVar errAt undefAt v = do
       df <- getDynFlags
       locStr <- mkStringExpr $ showPpr df loc
-      let v' = if v == eRROR_ID
-                  then errAt
-                  else undefAt
       return $ mkCoreApps (Var v') [ Type t, locStr ]
 mkErrorAt _ _ _ expr = return expr
 
