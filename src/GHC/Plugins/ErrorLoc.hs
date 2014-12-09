@@ -1,4 +1,6 @@
-module GHC.Plugins.ErrorLoc (plugin, errorAt, undefinedAt) where
+module GHC.Plugins.ErrorLoc
+  (plugin, errorAt, undefinedAt, fromJustAt)
+  where
 
 import DynamicLoading
 import GhcPlugins
@@ -8,9 +10,9 @@ plugin :: Plugin
 plugin = defaultPlugin { installCoreToDos = install }
 
 install :: [CommandLineOption] -> [CoreToDo] -> CoreM [CoreToDo]
-install opts todos = do 
+install opts todos = do
   reinitializeGlobals
-    
+
   hsc_env <- getHscEnv
   Just errorAtName <- liftIO $ lookupRdrNameInModuleForPlugins hsc_env
                                (mkModuleName "GHC.Plugins.ErrorLoc")
@@ -21,27 +23,37 @@ install opts todos = do
                                (mkModuleName "GHC.Plugins.ErrorLoc")
                                (mkVarUnqual $ fsLit "undefinedAt")
   undefAtVar <- lookupId undefAtName
-  let annotate = mkErrorAt errorAtVar undefAtVar
+
+  Just fmjstName <- liftIO $ lookupRdrNameInModuleForPlugins hsc_env
+                             (mkModuleName "Data.Maybe")
+                             (mkVarUnqual $ fsLit "fromJust")
+  fmjstVar <- lookupId fmjstName
+
+  Just fmjstAtName <- liftIO $ lookupRdrNameInModuleForPlugins hsc_env
+                               (mkModuleName "GHC.Plugins.ErrorLoc")
+                               (mkVarUnqual $ fsLit "fromJustAt")
+  fmjstAtVar <- lookupId fmjstAtName
+
+  let subst = [ (eRROR_ID, errorAtVar), (uNDEFINED_ID, undefAtVar)
+              , (fmjstVar, fmjstAtVar)
+              ]
+
+  let annotate = mkErrorAt subst
 
   let mypass = CoreDoPluginPass "Add Locations to `error` calls"
              $ mkPass annotate ("kill-foreign-stubs" `elem` opts)
   return $ mypass : todos
 
+isErrorVar :: [(Var,Var)] -> Var -> Maybe Var
+isErrorVar subst v = lookup v subst
 
-isErrorVar :: Var -> Var -> Var -> Maybe Var
-isErrorVar errAt _ v
-  | v == eRROR_ID = Just errAt
-isErrorVar _ undefAt v
-  | v == uNDEFINED_ID = Just undefAt
-isErrorVar _ _ _ = Nothing
-
-mkErrorAt :: Var -> Var -> SrcSpan -> CoreExpr -> CoreM CoreExpr
-mkErrorAt errAt undefAt loc (App (Var v) (Type t))
-  | Just v' <- isErrorVar errAt undefAt v = do
+mkErrorAt :: [(Var,Var)] -> SrcSpan -> CoreExpr -> CoreM CoreExpr
+mkErrorAt subst loc (App (Var v) (Type t))
+  | Just v' <- isErrorVar subst v = do
       df <- getDynFlags
       locStr <- mkStringExpr $ showPpr df loc
       return $ mkCoreApps (Var v') [ Type t, locStr ]
-mkErrorAt _ _ _ expr = return expr
+mkErrorAt _ _ expr = return expr
 
 
 errorAt :: String -> String -> a
@@ -51,3 +63,8 @@ errorAt loc msg = error (loc ++ ": " ++ msg)
 undefinedAt :: String -> a
 undefinedAt loc = errorAt loc "Prelude.undefined"
 {-# INLINE undefinedAt #-}
+
+fromJustAt :: String -> Maybe a -> a
+fromJustAt loc Nothing  = errorAt loc "Maybe.fromJust: Nothing"
+fromJustAt _   (Just x) = x
+{-# INLINE fromJustAt #-}
