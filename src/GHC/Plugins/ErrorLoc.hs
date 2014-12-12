@@ -14,25 +14,14 @@ install opts todos = do
   reinitializeGlobals
 
   hsc_env <- getHscEnv
-  Just errorAtName <- liftIO $ lookupRdrNameInModuleForPlugins hsc_env
-                               (mkModuleName "GHC.Plugins.ErrorLoc")
-                               (mkVarUnqual $ fsLit "errorAt")
-  errorAtVar <- lookupId errorAtName
+  errLocM <- lookupModule (mkModuleName "GHC.Plugins.ErrorLoc") Nothing
+  
+  errorAtVar <- lookupId =<< lookupName errLocM (mkVarOcc "errorAt")
+  undefAtVar <- lookupId =<< lookupName errLocM (mkVarOcc "undefinedAt")
+  fmjstAtVar <- lookupId =<< lookupName errLocM (mkVarOcc "fromJustAt")
 
-  Just undefAtName <- liftIO $ lookupRdrNameInModuleForPlugins hsc_env
-                               (mkModuleName "GHC.Plugins.ErrorLoc")
-                               (mkVarUnqual $ fsLit "undefinedAt")
-  undefAtVar <- lookupId undefAtName
-
-  Just fmjstName <- liftIO $ lookupRdrNameInModuleForPlugins hsc_env
-                             (mkModuleName "Data.Maybe")
-                             (mkVarUnqual $ fsLit "fromJust")
-  fmjstVar <- lookupId fmjstName
-
-  Just fmjstAtName <- liftIO $ lookupRdrNameInModuleForPlugins hsc_env
-                               (mkModuleName "GHC.Plugins.ErrorLoc")
-                               (mkVarUnqual $ fsLit "fromJustAt")
-  fmjstAtVar <- lookupId fmjstAtName
+  maybeM   <- lookupModule (mkModuleName "Data.Maybe") Nothing
+  fmjstVar <- lookupId =<< lookupName maybeM (mkVarOcc "fromJust")
 
   let subst = [ (eRROR_ID, errorAtVar), (uNDEFINED_ID, undefAtVar)
               , (fmjstVar, fmjstAtVar)

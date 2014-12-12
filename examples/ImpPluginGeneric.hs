@@ -1,13 +1,14 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
-
 module ImpPluginGeneric (plugin) where
 
 import           GHC.Plugins.SrcSpan
 
-import           DynamicLoading
 import           GhcPlugins
+
+import qualified Imp
 
 plugin :: Plugin
 plugin = defaultPlugin { installCoreToDos = install }
@@ -18,16 +19,16 @@ install opts todos = do
 
   hsc_env <- getHscEnv
 
-  Just withLocName <- liftIO $ lookupRdrNameInModuleForPlugins hsc_env iMP_mod wITH_LOC
-  withLocVar <- lookupId withLocName
+  Just withLocName <- thNameToGhcName 'Imp.withLocation
+  withLocId <- lookupId withLocName
 
-  Just mkLocName <- liftIO $ lookupRdrNameInModuleForPlugins hsc_env iMP_mod mK_LOC
-  mkLocVar <- lookupId mkLocName
+  Just mkLocName <- thNameToGhcName 'Imp.makeLocation
+  mkLocId <- lookupId mkLocName
 
-  Just impName <- liftIO $ lookupRdrNameInModuleForPlugins hsc_env iMP_mod iMP
-  impCon <- lookupTyCon impName
+  Just impName <- thNameToGhcName ''Imp.Imp
+  impTyCon <- lookupTyCon impName
 
-  let annotate loc expr = mkWithLocExpr impCon mkLocVar withLocVar loc expr
+  let annotate = mkWithLocExpr impTyCon mkLocId withLocId
   let locpass = mkPass annotate killForeignStubs
 
   return $ (CoreDoPluginPass "Add Locations" locpass) : todos
@@ -65,11 +66,3 @@ mkLocExpr mkLocVar ss = do
                                      , mkIntExprInt df (srcSpanEndLine ss)
                                      , mkIntExprInt df (srcSpanEndCol ss)
                                      ]
-
-iMP_mod :: ModuleName
-iMP_mod = mkModuleName "Imp"
-
-wITH_LOC, mK_LOC, iMP :: RdrName
-wITH_LOC = mkVarUnqual $ fsLit "withLocation"
-mK_LOC   = mkVarUnqual $ fsLit "makeLocation"
-iMP      = mkRdrQual iMP_mod $ mkTcOcc "Imp"

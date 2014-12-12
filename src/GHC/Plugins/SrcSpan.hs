@@ -38,15 +38,20 @@
 -- plugin will prevent this if you pass @True@ instead of @False@ to 'mkPass',
 -- but be warned, this will likely break __any__ FFI code your module uses.
 
-module GHC.Plugins.SrcSpan (mkPass) where
+module GHC.Plugins.SrcSpan (mkPass, lookupModule, lookupName) where
 
 import           Control.Exception
 import           Control.Monad
-import           CostCentre
 import qualified Data.Array        as Array
 import           Data.IntMap       (IntMap)
 import qualified Data.IntMap       as IntMap
+
+import           CostCentre
+import           Finder
 import           GhcPlugins
+import           IfaceEnv
+import           TcRnMonad
+
 import           Trace.Hpc.Mix
 import           Trace.Hpc.Util
 
@@ -135,5 +140,21 @@ addLocationsExpr getSpan annotate = go noSrcSpan
     = (c, xs,) `liftM` go ss expr
 
 
+--------------------------------------------------------------------------------
+-- Utilities
+--------------------------------------------------------------------------------
 secondM :: Monad m => (b -> m c) -> (a, b) -> m (a, c)
 secondM f (a, b) = (a,) `liftM` f b
+
+lookupModule :: ModuleName -> Maybe FastString -> CoreM Module
+lookupModule mod_nm pkg = do
+    hsc_env <- getHscEnv
+    found_module <- liftIO $ findImportedModule hsc_env mod_nm pkg
+    case found_module of
+      Found _ md -> return md
+      _          -> error $ "Unable to resolve module looked up by plugin: " ++ moduleNameString mod_nm
+
+lookupName :: Module -> OccName -> CoreM Name
+lookupName md occ = do
+  hsc_env <- getHscEnv
+  liftIO $ initTcForLookup hsc_env $ lookupOrig md occ
