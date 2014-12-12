@@ -28,32 +28,31 @@ install opts todos = do
   Just impName <- thNameToGhcName ''Imp.Imp
   impTyCon <- lookupTyCon impName
 
-  let annotate = mkWithLocExpr impTyCon mkLocId withLocId
-  let locpass = mkPass annotate killForeignStubs
+  let locpass = mkPass (annotate impTyCon mkLocId withLocId) killForeignStubs
 
   return $ (CoreDoPluginPass "Add Locations" locpass) : todos
   where
   killForeignStubs = "kill-foreign-stubs" `elem` opts
 
 
-isImpStmt :: TyCon -> CoreExpr -> Bool
-isImpStmt impTyCon expr@(App _ _)
+isInteresting :: TyCon -> CoreExpr -> Bool
+isInteresting impTyCon expr@(App _ _)
   | Just (tc, _) <- splitTyConApp_maybe $ exprType expr
   = tc == impTyCon
-isImpStmt impTyCon expr@(Var _)
+isInteresting impTyCon expr@(Var _)
   | Just (tc, _) <- splitTyConApp_maybe $ exprType expr
   = tc == impTyCon
-isImpStmt _ _
+isInteresting _ _
   = False
 
-mkWithLocExpr :: TyCon -> Var -> Var -> SrcSpan -> CoreExpr -> CoreM CoreExpr
-mkWithLocExpr impTyCon mkLocVar withLocVar (RealSrcSpan ss) expr
-  | isImpStmt impTyCon expr = do
+annotate :: TyCon -> Var -> Var -> SrcSpan -> CoreExpr -> CoreM CoreExpr
+annotate impTyCon mkLocVar withLocVar (RealSrcSpan ss) expr
+  | isInteresting impTyCon expr = do
       loc <- mkLocExpr mkLocVar ss
       return $ mkCoreApps (Var withLocVar) $ map Type tys ++ [ loc, expr ]
       where
       (_, tys) = splitAppTys $ exprType expr
-mkWithLocExpr _ _ _ _ expr = return expr
+annotate _ _ _ _ expr = return expr
 
 
 mkLocExpr :: Var -> RealSrcSpan -> CoreM CoreExpr

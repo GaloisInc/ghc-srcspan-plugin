@@ -43,9 +43,9 @@ pass guts@(ModGuts {..}) = do
   Just impName <- thNameToGhcName ''Imp.Imp
   impTyCon <- lookupTyCon impName
 
-  let annotate = mkWithLocExpr impTyCon mkLocId withLocId
-
-  binds <- mapM (addLocationsBind tickSpan annotate) mg_binds
+  binds <- mapM (addLocationsBind tickSpan
+                 (annotate impTyCon mkLocId withLocId))
+                mg_binds
 
   return (guts { mg_binds = binds })
 
@@ -114,24 +114,24 @@ addLocationsExpr getSpan annotate = go noSrcSpan
     = (c, xs,) `liftM` go ss expr
 
 
-isImpStmt :: TyCon -> CoreExpr -> Bool
-isImpStmt impTyCon expr@(App _ _)
+isInteresting :: TyCon -> CoreExpr -> Bool
+isInteresting impTyCon expr@(App _ _)
   | Just (tc, _) <- splitTyConApp_maybe $ exprType expr
   = tc == impTyCon
   | otherwise
   = False
-isImpStmt _ _ = False
+isInteresting _ _ = False
 
 
-mkWithLocExpr :: TyCon -> Id -> Id -> SrcSpan -> CoreExpr -> CoreM CoreExpr
-mkWithLocExpr impTyCon mkLocId withLocId (RealSrcSpan ss) expr
-  | isImpStmt impTyCon expr = do
+annotate :: TyCon -> Id -> Id -> SrcSpan -> CoreExpr -> CoreM CoreExpr
+annotate impTyCon mkLocId withLocId (RealSrcSpan ss) expr
+  | isInteresting impTyCon expr = do
       loc <- mkLocExpr mkLocId ss
       return $ mkCoreApps (Var withLocId) $ map Type tys ++ [ loc, expr ]
   where
   Just (_, tys) = splitTyConApp_maybe $ exprType expr
 
-mkWithLocExpr _ _ _ _ expr = return expr
+annotate _ _ _ _ expr = return expr
 
 
 mkLocExpr :: Id -> RealSrcSpan -> CoreM CoreExpr
