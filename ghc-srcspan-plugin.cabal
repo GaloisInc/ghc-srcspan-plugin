@@ -17,7 +17,7 @@ description:         This package provides a generic Core-to-Core pass for
 license:             BSD3
 license-file:        LICENSE
 author:              Eric Seidel
-maintainer:          eseidel@galois.com
+maintainer:          eric@seidel.io
 copyright:           Copyright (c) 2014, Galois Inc.
 category:            Language
 build-type:          Simple
